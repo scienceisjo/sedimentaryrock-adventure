@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>돌멩이 키우기: 퇴적암 편</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel CDN (브라우저에서 JSX 컴파일) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- 구글 폰트 (Jua - 귀여운 글씨체) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+
+  <style>
+    /* 글로벌 애니메이션 및 귀여운 폰트 강제 적용 */
+    body, input, button, textarea {
+      font-family: 'Jua', sans-serif !important;
+      margin: 0;
+      background-color: #e5e7eb;
+    }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+    .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+    .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
+    .animate-spin-slow { animation: spin 3s linear infinite; }
+    .animate-pop { animation: pop 0.3s ease-out; }
+    
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // --- 자체 효과음 생성기 (Web Audio API) ---
+    let audioCtx = null;
+    const initAudio = () => {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    };
+
+    const playTone = (freq, type, duration, vol=0.1) => {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    };
+
+    const sounds = {
+      pop: () => playTone(600, 'sine', 0.1, 0.1),
+      hit: () => playTone(150, 'square', 0.1, 0.2),
+      success: () => {
+        playTone(440, 'sine', 0.1, 0.1);
+        setTimeout(() => playTone(554, 'sine', 0.1, 0.1), 100);
+        setTimeout(() => playTone(659, 'sine', 0.3, 0.15), 200);
+      },
+      fanfare: () => {
+        [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+          setTimeout(() => playTone(f, 'square', 0.2, i === 3 ? 0.2 : 0.1), i * 150);
+        });
+      },
+      wrong: () => playTone(200, 'sawtooth', 0.3, 0.1)
+    };
+
+    // --- Lucide 아이콘 SVG ---
+    const Book = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>);
+    const Sparkles = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>);
+    const ArrowDown = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>);
+    const ArrowLeft = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>);
+    const ArrowRight = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>);
+    const TimerReset = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10 2h4"/><path d="M12 14v-4"/><path d="M4 13a8 8 0 0 1 8-7 8 8 0 1 1-5.3 14L4 17.6"/><path d="M9 17H4v5"/></svg>);
+    const Camera = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>);
+    const CheckCircle2 = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>);
+    const Award = ({ size = 24, className = "" }) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>);
+
+    // --- 데이터 정의 ---
+    const ROCKS = {
+      CONGLOMERATE: { id: 'conglomerate', name: '역암', type: '자갈', desc: '자갈, 모래 등이 쌓이고 굳어진 암석', size: '알갱이 크기 : 역암 > 사암 > 이암', color: 'bg-stone-500' },
+      SANDSTONE: { id: 'sandstone', name: '사암', type: '모래', desc: '주로 모래가 쌓이고 굳어진 암석', size: '알갱이 크기 : 역암 > 사암 > 이암', color: 'bg-yellow-600' },
+      MUDSTONE: { id: 'mudstone', name: '이암', type: '진흙', desc: '주로 진흙이 쌓이고 굳어진 암석', size: '알갱이 크기 : 역암 > 사암 > 이암', color: 'bg-stone-700' },
+      LIMESTONE: { id: 'limestone', name: '석회암', type: '석회질 물질, 조개 껍데기', desc: '석회질 물질, 조개 껍데기 등이 쌓이고 굳어진 암석 (보너스!)', size: '생물이나 화학적 작용으로 만들어짐', color: 'bg-emerald-100' },
+    };
+
+    function App() {
+      const [stage, setStage] = useState(-1); 
+      const [userName, setUserName] = useState("");
+      const [hasBrokenRock, setHasBrokenRock] = useState(false);
+      const [selectedSediments, setSelectedSediments] = useState([]);
+      const [unlockedRocks, setUnlockedRocks] = useState([]);
+      const [quizCompleted, setQuizCompleted] = useState(false);
+      const [targetRockIndex, setTargetRockIndex] = useState(0); 
+      const TARGET_ORDER = [ROCKS.CONGLOMERATE, ROCKS.SANDSTONE, ROCKS.MUDSTONE, ROCKS.LIMESTONE];
+
+      // html2canvas 로드
+      useEffect(() => {
+        const script = document.createElement('script');
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+        script.async = true;
+        document.body.appendChild(script);
+      }, []);
+
+      const handleBtnClick = (callback) => {
+        initAudio();
+        sounds.pop();
+        if(callback) callback();
+      };
+
+      const nextMission = () => {
+        if (targetRockIndex < 3) {
+          const nextTarget = targetRockIndex + 1;
+          setTargetRockIndex(nextTarget);
+          setStage(nextTarget === 3 ? 7 : 1); 
+        } else {
+          setTargetRockIndex(0); 
+          setStage(1);
+        }
+        setSelectedSediments([]);
+      };
+
+      const saveToEncyclopedia = (rockId) => {
+        setUnlockedRocks(prev => {
+          if (prev.includes(rockId)) return prev;
+          const newRocks = [...prev, rockId];
+          if (newRocks.length === 4) sounds.fanfare();
+          else sounds.success();
+          return newRocks;
+        });
+      };
+
+      const FooterText = () => (
+        <div className="text-center text-[12px] sm:text-sm text-stone-500 mt-8 mb-4 px-4 break-keep">
+          제작자 : 조승재(과학이조선생) 문의 : chuseonjae@outlook.kr<br/>
+          교육 목적으로 학교 등 공공기관에서 자유롭게 사용 가능합니다.
+        </div>
+      );
+
+      // --- Stage -1: 이름 입력 화면 ---
+      const NameStage = () => {
+        const [inputName, setInputName] = useState("");
+        const startApp = () => {
+          if (inputName.trim() === "") { alert("이름을 입력해주세요!"); return; }
+          initAudio();
+          sounds.pop();
+          setUserName(inputName.trim());
+          setStage(0);
+        };
+        return (
+          <div className="flex flex-col items-center justify-center h-full p-6 animate-fade-in bg-gradient-to-b from-blue-50 to-white w-full">
+            <div className="text-7xl sm:text-8xl animate-bounce mb-6">👧👦</div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-800 mb-2">탐험가 등록!</h1>
+            <p className="text-stone-600 mb-8 sm:text-lg text-center break-keep">나중에 완성될 도감 업적에 남길<br/>자신의 이름을 적어주세요.</p>
+            <input type="text" value={inputName} onChange={(e) => setInputName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') startApp(); }} placeholder="여기에 이름 입력..."
+              className="text-center text-xl sm:text-2xl p-4 w-full max-w-sm rounded-2xl border-4 border-blue-200 focus:border-blue-500 focus:outline-none shadow-sm mb-6" maxLength={10} />
+            <button onClick={startApp} className="w-full max-w-sm py-4 bg-blue-500 text-white font-bold rounded-full shadow-lg hover:bg-blue-600 transition transform hover:scale-105 text-xl">출발하기 🚀</button>
+          </div>
+        );
+      };
+
+      // --- Stage 0: 인트로 ---
+      const IntroStage = () => {
+        return (
+          <div className="flex flex-col items-center justify-center h-full space-y-6 animate-fade-in text-center p-6 bg-gradient-to-b from-blue-50 to-white overflow-y-auto w-full">
+            <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full max-w-lg mt-4">
+              <div className="text-6xl sm:text-7xl animate-bounce drop-shadow-lg">🪨</div>
+              <h1 className="text-4xl sm:text-5xl font-extrabold text-stone-800 break-keep">돌멩이 키우기<br/><span className="text-2xl sm:text-3xl text-stone-600 mt-2 block">~ 퇴적암 편 ~</span></h1>
+              <p className="text-base sm:text-lg text-stone-600"><span className="text-blue-600 font-bold">{userName}</span> 탐험가님 환영합니다!<br/>바위씨의 험난한 여행을 돕고,<br/>나만의 멋진 퇴적암을 만들어보세요!</p>
+              <div className="flex flex-col gap-3 w-full px-4 mt-4">
+                <button onClick={() => handleBtnClick(() => setStage(targetRockIndex === 3 ? 7 : 1))} className="w-full py-4 bg-blue-500 text-white font-bold rounded-full shadow-lg hover:bg-blue-600 transition transform hover:scale-105 text-lg">미션 시작하기 🌊</button>
+                <button onClick={() => handleBtnClick(() => setStage(6))} className="w-full py-4 bg-stone-200 text-stone-800 font-bold rounded-full shadow hover:bg-stone-300 transition flex items-center justify-center gap-2 text-lg"><Book size={20} /> 도감 / 업적 보기</button>
+              </div>
+            </div>
+            <FooterText />
+          </div>
+        );
+      };
+
+      // --- Stage 1: 바위 부수기 및 선택 ---
+      const BreakStage = () => {
+        const [hp, setHp] = useState(10);
+        const [cracked, setCracked] = useState(hasBrokenRock); 
+        const currentTarget = TARGET_ORDER[targetRockIndex];
+        const hitRock = () => {
+          if (hp > 0) {
+            sounds.hit();
+            setHp(prev => prev - 1);
+            if (hp - 1 <= 0) {
+              setCracked(true); setHasBrokenRock(true); sounds.success();
+            }
+          }
+        };
+        const toggle = (type) => {
+          sounds.pop();
+          setSelectedSediments(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
+        };
+        const isSelectionValid = () => {
+          if (targetRockIndex === 0) return selectedSediments.includes('자갈') && selectedSediments.includes('모래') && selectedSediments.length === 2;
+          if (targetRockIndex === 1) return selectedSediments.includes('모래') && selectedSediments.length === 1;
+          if (targetRockIndex === 2) return selectedSediments.includes('진흙') && selectedSediments.length === 1;
+          return false;
+        };
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full p-6 text-center animate-fade-in w-full">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-2 text-stone-800">준비 단계: 시련과 여행</h2>
+            <div className="mb-4 bg-blue-100 text-blue-800 px-6 py-2 rounded-full font-bold shadow-sm text-lg">이번 미션: {currentTarget.name} 만들기!</div>
+            {!cracked ? (
+              <>
+                <p className="mb-8 text-stone-600 text-lg break-keep">산꼭대기의 바위가 비바람을 맞고 있어요.<br/>화면을 탭해서 바위를 부숴주세요!</p>
+                <div className={`text-9xl cursor-pointer select-none transition-transform active:scale-90 ${hp < 5 ? 'animate-ping' : ''}`} onClick={hitRock} style={{ transform: `rotate(${(10 - hp) * 5}deg)` }}>⛰️</div>
+                <div className="mt-8 w-64 h-4 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-orange-500 transition-all" style={{ width: `${(hp / 10) * 100}%` }}></div>
+                </div>
+              </>
+            ) : (
+              <div className="animate-fade-in-up w-full flex flex-col items-center mt-4">
+                <p className="mb-4 text-xl font-bold text-stone-800 break-keep">바위가 깨졌어요!<br/>{currentTarget.name}을(를) 만들려면<br/>어떤 알갱이가 필요할까요?</p>
+                <div className="flex flex-col gap-3 w-full max-w-sm">
+                  <button onClick={() => toggle('자갈')} className={`p-4 rounded-xl shadow font-bold text-lg transition-all ${selectedSediments.includes('자갈') ? 'bg-stone-500 text-white ring-4 ring-blue-400 scale-105' : 'bg-stone-300 text-stone-700 hover:bg-stone-400'}`}>🪨 듬직한 자갈</button>
+                  <button onClick={() => toggle('모래')} className={`p-4 rounded-xl shadow font-bold text-lg transition-all ${selectedSediments.includes('모래') ? 'bg-yellow-600 text-white ring-4 ring-blue-400 scale-105' : 'bg-yellow-300 text-yellow-800 hover:bg-yellow-400'}`}>⏳ 까슬까슬 모래</button>
+                  <button onClick={() => toggle('진흙')} className={`p-4 rounded-xl shadow font-bold text-lg transition-all ${selectedSediments.includes('진흙') ? 'bg-stone-800 text-white ring-4 ring-blue-400 scale-105' : 'bg-stone-400 text-stone-800 hover:bg-stone-500 hover:text-white'}`}>🟤 매끄러운 진흙</button>
+                </div>
+                <button onClick={() => handleBtnClick(() => { if(isSelectionValid()) setStage(2); else sounds.wrong(); })} disabled={!isSelectionValid()} className={`mt-8 p-4 w-full max-w-sm rounded-full font-bold shadow-lg transition-all text-lg ${isSelectionValid() ? 'bg-blue-500 text-white hover:bg-blue-600 hover:scale-105' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>바다로 여행 떠나기 🌊</button>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // --- Stage 2: 1단계 (테트리스) - 키보드 추가됨 ---
+      const TetrisStage = () => {
+        const COLS = 5, ROWS = 7; 
+        const boardRef = useRef(Array.from({ length: ROWS }, () => Array(COLS).fill(null)));
+        const [renderTrigger, setRenderTrigger] = useState(0);
+        const countRef = useRef(0);
+        const [isPerfect, setIsPerfect] = useState(true); 
+        const [showResultMsg, setShowResultMsg] = useState(false);
+        const blockRef = useRef({ x: 2, y: 0, type: selectedSediments[Math.floor(Math.random() * selectedSediments.length)] });
+
+        const move = useCallback((dx, dy) => {
+          if (showResultMsg) return;
+          let { x, y, type } = blockRef.current;
+          let nx = x + dx, ny = y + dy;
+
+          if (nx < 0 || nx >= COLS) return;
+
+          if (ny >= ROWS || (ny >= 0 && boardRef.current[ny][nx] !== null)) {
+            if (dy > 0) { 
+              if (y >= 0) {
+                boardRef.current[y][x] = type;
+                sounds.pop();
+              }
+              countRef.current += 1;
+              if (countRef.current >= 15) {
+                let perfect = true;
+                // 3줄이 꽉 찼는지 검사
+                for (let r = ROWS - 3; r < ROWS; r++) {
+                  if (boardRef.current[r].some(cell => cell === null)) perfect = false;
+                }
+                setIsPerfect(perfect);
+                setShowResultMsg(true);
+                if(perfect) sounds.success(); else sounds.wrong();
+                return;
+              }
+              blockRef.current = { x: 2, y: 0, type: selectedSediments[Math.floor(Math.random() * selectedSediments.length)] };
+            }
+          } else {
+            blockRef.current = { x: nx, y: ny, type };
+          }
+          setRenderTrigger(prev => prev + 1);
+        }, [showResultMsg, selectedSediments]);
+
+        // 키보드 방향키 연동
+        useEffect(() => {
+          const handleKeyDown = (e) => {
+            if (showResultMsg) return;
+            if (['ArrowLeft', 'ArrowRight', 'ArrowDown'].includes(e.key)) {
+              e.preventDefault(); // 스크롤 방지
+              if (e.key === 'ArrowLeft') { sounds.pop(); move(-1, 0); }
+              if (e.key === 'ArrowRight') { sounds.pop(); move(1, 0); }
+              if (e.key === 'ArrowDown') { sounds.pop(); move(0, 1); }
+            }
+          };
+          window.addEventListener('keydown', handleKeyDown);
+          return () => window.removeEventListener('keydown', handleKeyDown);
+        }, [move, showResultMsg]);
+
+        useEffect(() => {
+          const interval = setInterval(() => move(0, 1), 500); 
+          return () => clearInterval(interval);
+        }, [move, showResultMsg]);
+
+        if (showResultMsg) {
+          return (
+            <div className="flex flex-col items-center justify-center h-full w-full p-6 text-center bg-blue-100 animate-fade-in">
+              <div className="text-8xl mb-6">{isPerfect ? '🌟' : '😅'}</div>
+              <h2 className="text-3xl font-bold mb-4 text-blue-900 break-keep">{isPerfect ? "3줄 쌓기 성공!" : "다음 번엔 3줄을 꽉 채워봐요!"}</h2>
+              <button onClick={() => handleBtnClick(() => setStage(3))} className="px-10 py-5 bg-blue-500 text-white font-bold rounded-full shadow-lg hover:bg-blue-600 transition text-xl mt-6">다음 단계로</button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full w-full p-4 select-none bg-blue-100 text-stone-800 touch-none">
+            <h2 className="text-3xl font-bold mb-2 text-blue-900">1단계 : 퇴적물이 쌓인다</h2>
+            <p className="text-center mb-4 break-keep">15개를 활용해 3줄을 쌓으세요!</p>
+            <div className="bg-white p-4 rounded-xl shadow-lg mb-6">
+              <div className="text-center font-bold text-blue-500 mb-2">쌓은 개수: {countRef.current} / 15</div>
+              <div className="grid grid-cols-5 gap-1 bg-cyan-900 p-2 border-4 border-cyan-800 rounded-lg mx-auto">
+                {Array.from({ length: ROWS }).map((_, r) => (
+                  Array.from({ length: COLS }).map((_, c) => {
+                    let isCurrent = blockRef.current.x === c && blockRef.current.y === r;
+                    let cellData = boardRef.current[r][c];
+                    return (
+                      <div key={`${r}-${c}`} className="w-12 h-12 bg-cyan-950 rounded flex items-center justify-center text-3xl shadow-inner">
+                        {isCurrent ? (blockRef.current.type === '자갈'?'🪨':blockRef.current.type==='모래'?'⏳':'🟤') : cellData ? (cellData==='자갈'?'🪨':cellData==='모래'?'⏳':'🟤') : ''}
+                      </div>
+                    );
+                  })
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-6 mt-2">
+              <button onClick={() => {sounds.pop(); move(-1, 0);}} className="w-20 h-20 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg active:scale-95"><ArrowLeft size={36}/></button>
+              <button onClick={() => {sounds.pop(); move(0, 1);}} className="w-20 h-20 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg active:scale-95"><ArrowDown size={36}/></button>
+              <button onClick={() => {sounds.pop(); move(1, 0);}} className="w-20 h-20 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg active:scale-95"><ArrowRight size={36}/></button>
+            </div>
+            <p className="text-sm text-gray-500 mt-4 hidden md:block">키보드 화살표 방향키(⬅️ ⬇️ ➡️)로도 움직일 수 있습니다.</p>
+          </div>
+        );
+      };
+
+      // --- Stage 3: 2단계 (다져짐) - 키보드 추가됨 ---
+      const CompressStage = () => {
+        const [progress, setProgress] = useState(0);
+
+        const handlePress = useCallback(() => {
+          sounds.pop();
+          setProgress(prev => {
+            const next = Math.min(prev + 5, 100);
+            if (next === 100 && prev < 100) sounds.success();
+            return next;
+          });
+        }, []);
+
+        // 키보드 방향키 연동
+        useEffect(() => {
+          const handleKeyDown = (e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              handlePress();
+            }
+          };
+          window.addEventListener('keydown', handleKeyDown);
+          return () => window.removeEventListener('keydown', handleKeyDown);
+        }, [handlePress]);
+
+        useEffect(() => {
+          if (progress >= 100) setTimeout(() => setStage(4), 1000);
+        }, [progress]);
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full w-full p-6 select-none bg-cyan-950 text-white touch-none">
+            <h2 className="text-3xl font-bold mb-4 text-cyan-200">2단계 : 퇴적물이 다져진다</h2>
+            <p className="text-center text-cyan-100 mb-8 text-lg break-keep">위에 계속 쌓이는 퇴적물들이 무거워요!<br/>버튼을 눌러 지층을 납작하게 다져주세요.</p>
+            <div className="relative w-64 h-80 border-x-4 border-b-4 border-cyan-800 rounded-b-xl overflow-hidden bg-cyan-900/50 flex flex-col justify-end items-center mb-8 shadow-inner">
+              <div className="w-full transition-all duration-200 flex flex-col justify-end overflow-hidden" style={{ height: `${100 - (progress * 0.6)}%` }}>
+                <div className="flex-1 bg-amber-700/90 border-b border-black/40 flex items-center justify-center font-bold">최근 퇴적층</div>
+                <div className="flex-1 bg-stone-600/90 border-b border-black/40 flex items-center justify-center font-bold">중간 지층</div>
+                <div className="flex-1 bg-amber-900/90 flex items-center justify-center font-bold">오래된 지층</div>
+              </div>
+            </div>
+            <button onClick={handlePress} className="px-12 py-5 bg-yellow-500 text-yellow-900 font-bold rounded-full shadow-lg text-2xl flex items-center gap-2 active:scale-90 transition-all">
+              <ArrowDown size={32} /> 꾹꾹 누르기!
+            </button>
+            <p className="text-sm text-cyan-400 mt-4 hidden md:block">키보드 화살표 아래쪽(⬇️)키를 눌러도 됩니다.</p>
+            <div className="mt-4 w-80 h-6 bg-cyan-900 rounded-full border border-cyan-700 relative shadow-inner overflow-hidden">
+              <div className="h-full bg-green-500 transition-all" style={{ width: `${progress}%` }}></div>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold">{Math.floor(progress)}% 다져짐</span>
+            </div>
+          </div>
+        );
+      };
+
+      // --- Stage 4: 3단계 (굳어짐) ---
+      const CementStage = () => {
+        const [filled, setFilled] = useState(Array(9).fill(false));
+        const fillCell = (idx) => {
+          if (filled[idx]) return;
+          sounds.pop();
+          setFilled(prev => { 
+            const next = [...prev]; next[idx] = true; 
+            if (next.every(Boolean)) sounds.success();
+            return next; 
+          });
+        };
+        useEffect(() => {
+          if (filled.every(Boolean)) setTimeout(() => setStage(5), 1500);
+        }, [filled]);
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full w-full p-6 select-none bg-stone-800 text-white touch-none">
+            <h2 className="text-3xl font-bold mb-4 text-cyan-400 text-center">3단계 : 광물 성분이 붙인다</h2>
+            <p className="text-center text-stone-300 mb-8 text-lg break-keep">어두운 빈 공간을 터치해서<br/>광물 접착제로 단단하게 굳혀주세요!</p>
+            <div className="grid grid-cols-3 gap-3 w-80 h-80 border-4 border-stone-600 p-4 bg-stone-900 rounded-2xl relative shadow-2xl">
+              {filled.map((isFilled, idx) => (
+                <div key={idx} onClick={() => fillCell(idx)} className={`w-full h-full rounded-full cursor-pointer transition-all duration-300 flex items-center justify-center ${isFilled ? 'bg-cyan-400 shadow-[0_0_15px_#22d3ee] scale-110' : 'bg-stone-700 hover:bg-stone-600'}`}>
+                  {isFilled && <Sparkles size={32} className="text-white animate-spin-slow" />}
+                </div>
+              ))}
+              {filled.every(Boolean) && (
+                <div className="absolute inset-0 bg-white/20 flex items-center justify-center animate-pulse backdrop-blur-sm rounded-2xl z-10">
+                  <Sparkles size={100} className="text-yellow-400" />
+                </div>
+              )}
+            </div>
+            <div className="mt-8 text-cyan-200 font-bold text-xl">{filled.filter(Boolean).length} / 9칸 채움</div>
+          </div>
+        );
+      };
+
+      // --- Stage 7: 석회암 (보너스) ---
+      const LimestoneBonusStage = () => {
+        const [droppedItems, setDroppedItems] = useState([]);
+        const [timeTraveling, setTimeTraveling] = useState(false);
+
+        const handleTap = (item) => {
+          sounds.pop();
+          setDroppedItems(prev => {
+            const next = [...prev, item];
+            if (next.length === 10) sounds.success();
+            return next;
+          });
+        };
+
+        const triggerTimeMachine = () => {
+          sounds.hit();
+          setTimeTraveling(true);
+          setTimeout(() => setStage(5), 2500);
+        };
+
+        return (
+          <div className={`flex flex-col items-center justify-center h-full w-full p-6 select-none transition-colors duration-1000 relative overflow-hidden ${timeTraveling ? 'bg-indigo-950 text-white' : 'bg-gradient-to-b from-sky-200 via-sky-300 to-blue-500 text-blue-900'}`}>
+            {!timeTraveling ? (
+              <div className="animate-fade-in w-full flex flex-col items-center z-10 mt-10">
+                <h2 className="text-4xl font-extrabold mb-2 text-teal-800 drop-shadow-md">✨ 보너스 미션 ✨</h2>
+                <h3 className="text-2xl font-bold mb-4 text-blue-900">석회암 만들기</h3>
+                <p className="text-center text-lg mb-6 bg-white/90 p-4 rounded-lg shadow-md break-keep max-w-md">
+                  바닷속의 조개 껍데기(🐚)나 석회질 물질(✨)을<br/>아이콘을 톡톡 터치해서 모래사장에 쌓아보세요!
+                </p>
+                <div className="flex gap-8 mb-8">
+                  <div onClick={() => handleTap('🐚')} className="text-6xl cursor-pointer p-4 bg-white/90 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-transform">🐚</div>
+                  <div onClick={() => handleTap('✨')} className="text-6xl cursor-pointer p-4 bg-white/90 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-transform">✨</div>
+                </div>
+                <div className="w-full max-w-xl h-64 bg-[#e8d5a7] border-t-8 border-[#d4bc82] rounded-b-2xl flex flex-wrap-reverse content-start justify-center gap-1 p-3 overflow-hidden shadow-2xl relative">
+                  {droppedItems.length === 0 && <span className="absolute top-1/2 -translate-y-1/2 text-stone-600 font-bold text-lg">이곳에 재료가 쌓입니다</span>}
+                  {droppedItems.map((item, idx) => <span key={idx} className="text-4xl animate-fade-in-up">{item}</span>)}
+                </div>
+                {droppedItems.length >= 10 && (
+                  <button onClick={triggerTimeMachine} className="mt-8 px-10 py-5 bg-teal-500 text-white font-bold rounded-full shadow-lg text-xl flex items-center gap-2 animate-bounce border-2 border-white">
+                    <TimerReset size={28} /> 타임머신 작동! ⏳
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center animate-fade-in z-10">
+                <TimerReset size={120} className="text-teal-400 animate-spin mb-8" />
+                <h2 className="text-4xl font-bold mb-4 text-teal-300">시간이 흐릅니다...</h2>
+                <p className="text-xl text-indigo-200 break-keep">수만 년의 시간이 순식간에 지나가며<br/>단단하게 굳어집니다!</p>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // --- Stage 5: 엔딩 ---
+      const EndingStage = () => {
+        const [finalRock, setFinalRock] = useState(null);
+        
+        useEffect(() => {
+          const target = TARGET_ORDER[targetRockIndex];
+          setFinalRock(target);
+          saveToEncyclopedia(target.id);
+        }, []);
+
+        if (!finalRock) return null;
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full w-full p-6 text-center animate-fade-in bg-stone-100">
+            <h2 className="text-4xl font-extrabold mb-2 text-stone-800 animate-bounce">새로운 탄생!</h2>
+            <p className="text-stone-600 mb-8 text-lg break-keep">마침내 단단한 암석이 되었습니다.</p>
+            <div className={`w-64 h-64 rounded-3xl shadow-2xl flex items-center justify-center text-8xl mb-8 z-10 ${finalRock.color} transition-transform hover:scale-110`}>
+              <span className="opacity-80">🪨</span>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-lg z-10 w-full max-w-sm">
+              <h3 className="text-3xl font-bold text-stone-800 mb-2">{finalRock.name}</h3>
+              <p className="text-stone-600 mb-4 text-lg">{finalRock.desc}</p>
+              <div className="bg-stone-50 p-3 rounded-lg border border-stone-200">
+                <p className="font-bold">{finalRock.size}</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 mt-8 w-full max-w-sm">
+              <button onClick={() => handleBtnClick(nextMission)} className="w-full py-4 bg-blue-500 text-white font-bold rounded-xl shadow hover:bg-blue-600 text-xl">
+                {targetRockIndex < 3 ? `${TARGET_ORDER[targetRockIndex + 1].name} 미션 (다음으로)` : '처음부터 다시 하기'}
+              </button>
+              <button onClick={() => handleBtnClick(() => setStage(6))} className="w-full py-4 bg-stone-700 text-white font-bold rounded-xl shadow hover:bg-stone-800 flex items-center justify-center gap-2 text-xl">
+                <Book size={20}/> 도감 / 업적 보기
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      // --- Stage 6: 도감 & 업적 ---
+      const EncyclopediaStage = () => {
+        const allUnlocked = unlockedRocks.length === 4;
+
+        const handleCapture = async () => {
+          handleBtnClick();
+          if (window.html2canvas) {
+            try {
+              const element = document.getElementById('encyclopedia-capture-area');
+              const canvas = await window.html2canvas(element, { scale: 2, backgroundColor: '#f5f5f4' });
+              const dataUrl = canvas.toDataURL('image/png');
+              const link = document.createElement('a');
+              link.download = `${userName}의_퇴적암_업적.png`;
+              link.href = dataUrl;
+              link.click();
+            } catch (e) {
+              alert('캡처 중 오류가 발생했습니다.');
+            }
+          }
+        };
+
+        return (
+          <div className="flex flex-col h-full w-full bg-stone-100 animate-fade-in relative">
+            <div className="bg-stone-800 text-white p-4 flex items-center justify-between shadow-md z-10">
+              <h2 className="text-2xl font-bold flex items-center gap-2"><Book /> 도감 & 업적</h2>
+              <button onClick={() => handleBtnClick(() => setStage(0))} className="bg-stone-600 px-4 py-2 rounded-lg hover:bg-stone-500 font-bold">홈으로</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pb-10" id="encyclopedia-capture-area">
+              <div className="p-6 space-y-6 max-w-3xl mx-auto mt-4">
+                <div className="text-center mb-6">
+                  <h2 className="text-3xl font-extrabold text-stone-800"><span className="text-blue-600">{userName}</span> 탐험가의</h2>
+                  <h3 className="text-2xl font-bold text-stone-600 mt-1">위대한 퇴적암 컬렉션</h3>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-stone-200">
+                  <h3 className="font-bold text-xl mb-3 text-stone-700">📚 퇴적암이란?</h3>
+                  <p className="text-stone-600 break-keep leading-relaxed text-lg">물이나 바람에 의해 운반된 퇴적물(자갈, 모래, 진흙 등)이 쌓이고(퇴적), 꾹꾹 눌리고(다져짐) 알갱이 사이가 채워져(굳어짐) 만들어진 암석입니다.</p>
+                </div>
+
+                {allUnlocked && !quizCompleted && (
+                  <div className="bg-yellow-100 border-2 border-yellow-400 p-6 rounded-2xl text-center shadow-lg animate-pop">
+                    <h3 className="text-2xl font-bold text-yellow-800 mb-2">🎉 모든 암석을 발견했습니다!</h3>
+                    <p className="text-yellow-700 mb-4 text-lg">마지막 관문인 퀴즈를 맞히면 업적 캡처가 가능해집니다.</p>
+                    <button onClick={() => handleBtnClick(() => setStage(8))} className="w-full py-4 bg-yellow-500 text-white font-bold rounded-xl text-xl shadow-md hover:bg-yellow-600 flex justify-center items-center gap-2">
+                      <Award size={24} /> 개념 확인 퀴즈 풀러 가기!
+                    </button>
+                  </div>
+                )}
+
+                {allUnlocked && quizCompleted && (
+                  <div className="bg-emerald-100 border-2 border-emerald-400 p-6 rounded-2xl text-center shadow-lg animate-fade-in">
+                    <h3 className="text-2xl font-bold text-emerald-800 mb-2 flex justify-center items-center gap-2"><Award size={28}/> 퀴즈 마스터 달성!</h3>
+                    <p className="text-emerald-700 mb-4 text-lg">모든 과정을 완벽하게 마쳤습니다! 자랑스럽게 캡처해보세요.</p>
+                    <button onClick={handleCapture} className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl text-xl shadow-md hover:bg-emerald-600 flex justify-center items-center gap-2">
+                      <Camera size={24} /> 멋진 내 업적 캡처하기
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Object.values(ROCKS).map(baseRock => {
+                    const found = unlockedRocks.includes(baseRock.id);
+                    return (
+                      <div key={baseRock.id} className={`p-4 rounded-2xl border-2 transition-all ${found ? 'border-blue-300 bg-white shadow-md' : 'border-dashed border-stone-300 bg-stone-50 opacity-60'}`}>
+                        <div className="flex gap-4 items-center">
+                          <div className={`w-20 h-20 rounded-xl flex items-center justify-center text-4xl shadow-inner flex-shrink-0 ${found ? baseRock.color : 'bg-stone-200'}`}>
+                            {found ? '🪨' : '❓'}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-bold text-xl text-stone-800 flex items-center justify-between">
+                              {found ? baseRock.name : '???'}
+                              {found && <span className="text-xs font-normal text-blue-500 bg-blue-50 px-2 py-1 rounded">발견!</span>}
+                            </h4>
+                            <p className="text-sm text-stone-500 mt-2 break-keep">{found ? baseRock.desc : '단서를 찾아 모험을 떠나보세요!'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                <div className="text-center text-sm text-stone-500 mt-8 mb-4 px-4 font-bold border-t pt-4">
+                  🏆 {userName}의 훌륭한 탐험 기록 🏆
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // --- Stage 8: 퀴즈 (마지막 관문) - 한글 입력 오류 수정됨 ---
+      const QuizStage = () => {
+        const [answers, setAnswers] = useState({});
+        const [score, setScore] = useState(null);
+
+        const handleChange = (id, val) => {
+          setAnswers(prev => ({...prev, [id]: val}));
+        };
+
+        const evaluate = () => {
+          let count = 0;
+          
+          // Q1
+          const q1Vals = [answers['q1_1']?.trim(), answers['q1_2']?.trim(), answers['q1_3']?.trim()];
+          if (q1Vals.includes('자갈') && q1Vals.includes('모래') && q1Vals.includes('진흙')) {
+            if (answers['q1_4']?.trim() === '퇴적물') count++;
+          }
+          // Other Qs (띄어쓰기 무시)
+          const clean = (str) => (str || '').replace(/\s/g, '');
+          
+          if (clean(answers['q2']) === '퇴적암') count++;
+          if (clean(answers['q3']) === '층리') count++;
+          if (clean(answers['q4']) === '화석') count++;
+          if (clean(answers['q5']) === '역암') count++;
+          if (clean(answers['q6']) === '사암') count++;
+          if (clean(answers['q7']) === '이암') count++;
+          if (clean(answers['q8']) === '역암>사암>이암' || clean(answers['q8']) === '역암,사암,이암') count++;
+          
+          setScore(count);
+
+          if (count === 8) {
+            sounds.fanfare();
+            setQuizCompleted(true);
+          } else {
+            sounds.wrong();
+          }
+          
+          const scrollArea = document.getElementById('quiz-scroll-area');
+          if (scrollArea) scrollArea.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        // 외부 컴포넌트가 아닌 일반 함수로 분리하여 한글 모음 입력(리렌더링 포커스) 오류 완벽 해결
+        const renderInput = (id, width = 'w-16', ph = "빈칸") => (
+          <input 
+            type="text" 
+            value={answers[id] || ''} 
+            onChange={(e) => handleChange(id, e.target.value)}
+            className={`mx-1 text-center font-bold text-blue-700 bg-blue-50 border-b-2 border-blue-400 focus:outline-none focus:border-blue-600 ${width} py-1 inline-block`}
+            placeholder={ph}
+          />
+        );
+
+        return (
+          <div className="flex flex-col h-full w-full bg-slate-50 animate-fade-in relative">
+            <div className="bg-emerald-600 text-white p-4 flex items-center justify-between shadow-md z-10">
+              <h2 className="text-2xl font-bold flex items-center gap-2"><CheckCircle2 /> 개념 확인 퀴즈</h2>
+              <button onClick={() => handleBtnClick(() => setStage(6))} className="bg-emerald-800 px-4 py-2 rounded-lg hover:bg-emerald-700 font-bold">도감으로</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-24" id="quiz-scroll-area">
+              <div className="max-w-3xl mx-auto space-y-6">
+                
+                {score !== null && (
+                  <div className={`p-6 sm:p-8 rounded-2xl shadow-lg border-2 text-center animate-fade-in-up ${score === 8 ? 'bg-emerald-50 border-emerald-400' : 'bg-red-50 border-red-300'}`}>
+                    <h3 className={`text-3xl font-bold mb-2 ${score === 8 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {score === 8 ? '🎉 완벽합니다! 🎉' : '😅 아쉽네요, 다시 도전!'}
+                    </h3>
+                    <p className="text-xl font-bold text-stone-700">총 8문제 중 <span className="text-4xl">{score}</span>문제를 맞혔습니다!</p>
+                    
+                    {score === 8 ? (
+                      <div className="mt-6 space-y-3">
+                        <p className="text-emerald-700 font-bold">드디어 모든 미션을 완료했습니다!</p>
+                        <button onClick={() => handleBtnClick(() => setStage(6))} className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow hover:bg-emerald-600 text-xl flex justify-center items-center gap-2">
+                          <Camera size={24}/> 도감 가서 업적 캡처하기
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => handleBtnClick(() => {setScore(null); setAnswers({});})} className="mt-6 px-8 py-3 bg-stone-200 rounded-xl text-stone-700 font-bold hover:bg-stone-300 text-lg">다시 풀기</button>
+                    )}
+                  </div>
+                )}
+
+                <div className="bg-white p-5 sm:p-8 rounded-xl shadow-sm border border-stone-200 space-y-6 text-lg text-stone-800 break-keep leading-relaxed">
+                  <p><strong>1.</strong> 지표면에 있는 암석이 잘게 부서지면 {renderInput('q1_1')}, {renderInput('q1_2')}, {renderInput('q1_3')} 등이 되고 물이나 바람 등의 영향으로 운반되어 쌓이는데 이를 {renderInput('q1_4', 'w-20')}(이)라고 한다.</p>
+                  <hr className="border-stone-100"/>
+                  <p><strong>2.</strong> 퇴적물이 오랜 시간 동안 다져지고 굳어지며 만들어진 암석을 {renderInput('q2', 'w-20')} (이)라고 한다.</p>
+                  <hr className="border-stone-100"/>
+                  <p><strong>3.</strong> 퇴적물이 번갈아 쌓이면서 줄무늬가 나타나기도 하는데 이를 {renderInput('q3', 'w-16')}(이)라고 한다.</p>
+                  <hr className="border-stone-100"/>
+                  <p><strong>4.</strong> 퇴적암에는 과거 생물의 몸체나 흔적이 {renderInput('q4', 'w-16')}(으)로 발견되기도 한다.</p>
+                  <hr className="border-stone-100"/>
+                  <p><strong>5.</strong> 자갈, 모래 등이 쌓이고 굳어진 암석을 무엇이라고 하는가?<br/>{renderInput('q5', 'w-32 mt-2', '정답 입력')}</p>
+                  <hr className="border-stone-100"/>
+                  <p><strong>6.</strong> 주로 모래가 쌓이고 굳어진 암석을 무엇이라고 하는가?<br/>{renderInput('q6', 'w-32 mt-2', '정답 입력')}</p>
+                  <hr className="border-stone-100"/>
+                  <p><strong>7.</strong> 주로 진흙이 쌓이고 굳어진 암석을 무엇이라고 하는가?<br/>{renderInput('q7', 'w-32 mt-2', '정답 입력')}</p>
+                  <hr className="border-stone-100"/>
+                  <p><strong>8.</strong> 역암, 사암, 이암을 퇴적물의 크기 순서로 나열하시오.<br/><span className="text-sm text-stone-500">(기호 &gt; 를 사용하세요. 예: A &gt; B &gt; C)</span><br/>{renderInput('q8', 'w-48 mt-2', '크기 순서대로 입력')}</p>
+                </div>
+
+                {score !== 8 && (
+                  <button 
+                    onClick={() => handleBtnClick(evaluate)} 
+                    className="w-full py-5 bg-blue-500 text-white font-bold rounded-xl shadow-lg hover:bg-blue-600 transition text-xl"
+                  >
+                    제출하고 결과 확인하기
+                  </button>
+                )}
+                <FooterText />
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderStage = () => {
+        switch (stage) {
+          case -1: return <NameStage />;
+          case 0: return <IntroStage />;
+          case 1: return <BreakStage />;
+          case 2: return <TetrisStage />;
+          case 3: return <CompressStage />;
+          case 4: return <CementStage />;
+          case 5: return <EndingStage />;
+          case 6: return <EncyclopediaStage />;
+          case 7: return <LimestoneBonusStage />; 
+          case 8: return <QuizStage />;
+          default: return <NameStage />;
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="w-full h-[100dvh] md:max-w-3xl md:h-[90dvh] md:my-[5dvh] md:rounded-[2rem] bg-white shadow-2xl relative overflow-hidden flex flex-col">
+            {renderStage()}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
