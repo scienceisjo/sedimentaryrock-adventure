@@ -628,7 +628,7 @@
         );
       };
 
-      // --- Stage 8: 퀴즈 (마지막 관문) ---
+     // --- Stage 8: 퀴즈 (마지막 관문) ---
       const QuizStage = () => {
         const [answers, setAnswers] = useState({});
         const [score, setScore] = useState(null);
@@ -662,7 +662,7 @@
 
           if (count === 8) {
             sounds.fanfare();
-            setQuizCompleted(true);
+            // 수정됨: 여기서 setQuizCompleted(true);를 실행하면 팝업이 뜨기도 전에 컴포넌트가 종료되므로 제거했습니다.
           } else {
             sounds.wrong();
           }
@@ -730,7 +730,8 @@
                       <p className="text-emerald-700 font-bold bg-emerald-100 p-3 rounded-lg break-keep">
                         ✨ 미션 올클리어! ✨<br/>도감으로 넘어가서 멋진 업적을 캡처해보세요!
                       </p>
-                      <button onClick={() => handleBtnClick(() => { setShowResultModal(false); setStage(6); })} className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow hover:bg-emerald-600 text-xl flex justify-center items-center gap-2">
+                      {/* 수정됨: 도감으로 가기 버튼을 눌렀을 때 비로소 setQuizCompleted(true)가 실행되도록 이동했습니다. */}
+                      <button onClick={() => handleBtnClick(() => { setShowResultModal(false); setQuizCompleted(true); setStage(6); })} className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow hover:bg-emerald-600 text-xl flex justify-center items-center gap-2">
                         <Camera size={24}/> 도감으로 가기
                       </button>
                     </div>
